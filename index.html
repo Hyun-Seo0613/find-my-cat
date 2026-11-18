@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Find My Cat - 사라진 고양이를 찾아라</title>
+
+  <!-- 픽셀 폰트 (오프라인이면 기본 폰트로 대체됩니다) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css" rel="stylesheet" />
+
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!--
+    재사용 가능한 픽셀 그래픽 (SVG symbol)
+    <use href="#pixel-cat"> 형태로 여러 곳에서 불러와 사용합니다.
+  -->
+  <svg class="svg-sprites" aria-hidden="true">
+    <symbol id="pixel-cat" viewBox="0 0 14 13" shape-rendering="crispEdges">
+      <path fill="currentColor" d="M2 0h1v1h-1z M9 0h1v1h-1z M2 1h2v1h-2z M8 1h2v1h-2z M2 2h8v3h-8z M3 5h6v1h-6z M2 6h8v1h-8z M1 7h10v4h-10z M12 8h2v1h-2z M13 9h1v2h-1z M1 11h13v1h-13z M2 12h2v1h-2z M8 12h2v1h-2z" />
+      <path style="fill: var(--cat-eye, #ffe66d)" d="M4 3h1v1h-1z M7 3h1v1h-1z" />
+    </symbol>
+    <symbol id="pixel-paw" viewBox="0 0 11 10" shape-rendering="crispEdges">
+      <path fill="currentColor" d="M0 4h2v2h-2z M3 1h2v2h-2z M6 1h2v2h-2z M9 4h2v2h-2z M3 5h5v1h-5z M2 6h7v3h-7z M3 9h5v1h-5z" />
+    </symbol>
+  </svg>
+
+  <div class="app">
+
+    <!-- =========================================
+         1. 메인(타이틀) 화면
+         ========================================= -->
+    <section id="title-screen" class="screen is-active" aria-label="메인 화면">
+      <!-- 배경 장식: 발자국 -->
+      <div class="paw-trail" aria-hidden="true">
+        <svg class="paw paw-1"><use href="#pixel-paw" /></svg>
+        <svg class="paw paw-2"><use href="#pixel-paw" /></svg>
+        <svg class="paw paw-3"><use href="#pixel-paw" /></svg>
+        <svg class="paw paw-4"><use href="#pixel-paw" /></svg>
+        <svg class="paw paw-5"><use href="#pixel-paw" /></svg>
+        <svg class="paw paw-6"><use href="#pixel-paw" /></svg>
+      </div>
+
+      <div class="title-card">
+        <div class="title-cats" aria-hidden="true">
+          <svg class="title-cat cat-dark"><use href="#pixel-cat" /></svg>
+          <span class="title-question">?</span>
+          <svg class="title-cat cat-orange"><use href="#pixel-cat" /></svg>
+        </div>
+
+        <h1 class="game-title">Find My Cat</h1>
+        <p class="game-subtitle">사라진 고양이를 찾아라</p>
+
+        <nav class="title-menu" aria-label="메인 메뉴">
+          <button id="start-button" class="pixel-button is-primary" type="button">게임 시작</button>
+          <button id="continue-button" class="pixel-button" type="button" disabled>
+            이어하기 <span class="badge">준비 중</span>
+          </button>
+          <button id="settings-button" class="pixel-button" type="button" disabled>
+            설정 <span class="badge">준비 중</span>
+          </button>
+        </nav>
+      </div>
+
+      <p class="title-footer">© 2026 Find My Cat · Prototype v0.1</p>
+    </section>
+
+    <!-- =========================================
+         2. 게임 화면
+         ========================================= -->
+    <section id="game-screen" class="screen" aria-label="게임 화면">
+
+      <!-- 상단 바 -->
+      <header class="game-header">
+        <h2 class="header-title">Find My Cat</h2>
+        <p class="header-location">
+          <span class="location-label">현재 장소</span>
+          <strong id="current-location">침실</strong>
+        </p>
+        <button id="menu-button" class="pixel-button is-small" type="button">메뉴</button>
+      </header>
+
+      <!-- 중앙: 방 -->
+      <main class="room-wrapper">
+        <!--
+          data-room-id : 현재 방의 ID (추후 Room System에서 방을 바꿀 때 사용)
+          각 오브젝트의 data-object-id 는 main.js 의 ROOMS 데이터 key 와 일치해야 합니다.
+        -->
+        <div id="room-scene" class="room-scene" data-room-id="bedroom">
+          <!-- 배경 (벽/바닥/창문) : 추후 배경 이미지 하나로 교체 가능 -->
+          <div class="room-background" aria-hidden="true">
+            <div class="room-wall"></div>
+            <div class="room-baseboard"></div>
+            <div class="room-floor"></div>
+            <div class="room-window">
+              <div class="window-glass"></div>
+              <div class="window-curtain curtain-left"></div>
+              <div class="window-curtain curtain-right"></div>
+            </div>
+            <div class="room-rug"></div>
+          </div>
+
+          <!-- 상호작용 오브젝트 -->
+          <button class="room-object obj-frame" type="button" data-object-id="frame" aria-label="액자">
+            <span class="frame-picture">
+              <svg class="frame-cat frame-cat-1"><use href="#pixel-cat" /></svg>
+              <svg class="frame-cat frame-cat-2"><use href="#pixel-cat" /></svg>
+            </span>
+          </button>
+
+          <button class="room-object obj-door" type="button" data-object-id="door" aria-label="방문">
+            <span class="door-panel door-panel-top"></span>
+            <span class="door-panel door-panel-bottom"></span>
+            <span class="door-knob"></span>
+            <span class="door-lock"></span>
+          </button>
+
+          <button class="room-object obj-bed" type="button" data-object-id="bed" aria-label="침대">
+            <span class="bed-headboard"></span>
+            <span class="bed-frame"></span>
+            <span class="bed-mattress"></span>
+            <span class="bed-pillow"></span>
+            <span class="bed-blanket"></span>
+            <span class="bed-footboard"></span>
+          </button>
+
+          <button class="room-object obj-plant" type="button" data-object-id="plant" aria-label="화분">
+            <span class="plant-leaf leaf-1"></span>
+            <span class="plant-leaf leaf-2"></span>
+            <span class="plant-leaf leaf-3"></span>
+            <span class="plant-leaf leaf-4"></span>
+            <span class="plant-pot"></span>
+          </button>
+
+          <button class="room-object obj-desk" type="button" data-object-id="desk" aria-label="책상">
+            <span class="desk-lamp">
+              <span class="lamp-shade"></span>
+              <span class="lamp-stand"></span>
+            </span>
+            <span class="desk-books"></span>
+            <span class="desk-note"></span>
+            <span class="desk-top"></span>
+            <span class="desk-leg leg-left"></span>
+            <span class="desk-leg leg-right"></span>
+          </button>
+
+          <button class="room-object obj-drawer" type="button" data-object-id="drawer" aria-label="서랍">
+            <span class="drawer-row"></span>
+            <span class="drawer-row"></span>
+            <span class="drawer-row is-open"></span>
+          </button>
+
+          <!-- 따뜻한 조명 효과 (클릭을 막지 않도록 pointer-events: none) -->
+          <div class="room-light" aria-hidden="true"></div>
+        </div>
+      </main>
+
+      <!-- 하단: 대화창 + 인벤토리 -->
+      <footer class="game-footer">
+        <section class="dialogue-box" aria-live="polite">
+          <p id="dialogue-speaker" class="dialogue-speaker">나</p>
+          <p id="dialogue-text" class="dialogue-text">...</p>
+          <span class="dialogue-arrow" aria-hidden="true">▼</span>
+        </section>
+
+        <section class="inventory" aria-label="인벤토리">
+          <h3 class="inventory-title">인벤토리</h3>
+          <!-- 슬롯은 main.js 의 renderInventorySlots() 가 생성합니다 -->
+          <ul id="inventory-slots" class="inventory-slots"></ul>
+        </section>
+      </footer>
+    </section>
+
+  </div>
+
+  <script src="js/main.js"></script>
+</body>
+</html>
