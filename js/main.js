@@ -25,30 +25,53 @@ const ROOMS = {
       speaker: '나',
       text: '...이상하다. 평소라면 보리랑 콩이가 얼굴을 밟으며 깨웠을 텐데.\n집 안이 너무 조용하다. 방 안을 조사해 보자.',
     },
+    // descriptions : 조사할 때마다 순서대로 보여줄 대사 목록
+    //                마지막 대사까지 본 뒤에는 마지막 대사를 계속 반복합니다.
     objects: {
       bed: {
         name: '침대',
-        description: '이불이 반쯤 걷혀 있다.\n베개 위에 까만 털과 주황색 털이 뒤섞여 있다. 어젯밤까지는 분명 여기서 같이 잤는데...',
+        descriptions: [
+          '이불이 반쯤 걷혀 있다.\n베개 위에 까만 털과 주황색 털이 뒤섞여 있다. 어젯밤까지는 분명 여기서 같이 잤는데...',
+          '이불을 들춰 보았다. 고양이들이 숨어 있지는 않다.\n침대 밑도 텅 비어 있다.',
+          '보리랑 콩이의 온기가 아직 남아 있는 것 같다...',
+        ],
       },
       desk: {
         name: '책상',
-        description: '스탠드 불이 켜져 있다. 어젯밤에 분명 끄고 잤는데...\n책상 위에 처음 보는 쪽지 한 장이 놓여 있다.',
+        descriptions: [
+          '스탠드 불이 켜져 있다. 어젯밤에 분명 끄고 잤는데...\n책상 위에 처음 보는 쪽지 한 장이 놓여 있다.',
+          '쪽지를 자세히 보니 무언가 적혀 있다.\n"고양이들이 가장 좋아하는 곳을 봐." ...누가 쓴 걸까?',
+          '쪽지의 글씨체가 어딘가 낯이 익다.',
+        ],
       },
       drawer: {
         name: '서랍',
-        description: '3단 서랍장이다. 맨 아래 칸이 살짝 열려 있다.\n틈 사이로 무언가 반짝이는 것이 보인다.',
+        descriptions: [
+          '3단 서랍장이다. 맨 아래 칸이 살짝 열려 있다.\n틈 사이로 무언가 반짝이는 것이 보인다.',
+          '서랍을 당겨 보았지만 무언가에 걸려서 더 이상 열리지 않는다.',
+          '안쪽의 반짝이는 물건이 신경 쓰인다.',
+        ],
       },
       frame: {
         name: '액자',
-        description: '보리, 콩이와 함께 찍은 사진이다.\n액자가 비스듬히 기울어져 있다. 누가 건드린 걸까?',
+        descriptions: [
+          '보리, 콩이와 함께 찍은 사진이다.\n액자가 비스듬히 기울어져 있다. 누가 건드린 걸까?',
+          '사진 아래 구석에 작은 글씨로 날짜가 적혀 있다.\n고양이들을 처음 데려온 날이다.',
+        ],
       },
       plant: {
         name: '화분',
-        description: '창가에 둔 몬스테라 화분이다.\n흙 위에 작은 발자국이 찍혀 있다. 고양이들은 이 화분을 싫어했는데...',
+        descriptions: [
+          '창가에 둔 몬스테라 화분이다.\n흙 위에 작은 발자국이 찍혀 있다. 고양이들은 이 화분을 싫어했는데...',
+          '발자국은 화분에서 창문 쪽으로 이어져 있다.',
+        ],
       },
       door: {
         name: '방문',
-        description: '문이 잠겨 있다. 안쪽에서 잠근 기억은 없는데...\n손잡이 아래에 숫자 4자리를 입력하는 자물쇠가 달려 있다.',
+        descriptions: [
+          '문이 잠겨 있다. 안쪽에서 잠근 기억은 없는데...\n손잡이 아래에 숫자 4자리를 입력하는 자물쇠가 달려 있다.',
+          '문고리를 흔들어 보았지만 꿈쩍도 하지 않는다.\n비밀번호를 알아내야 할 것 같다.',
+        ],
       },
     },
   },
@@ -64,7 +87,8 @@ const gameState = {
   currentScreen: 'title',   // 'title' | 'game'
   currentRoomId: 'bedroom', // 현재 있는 방의 ID
   selectedObjectId: null,   // 마지막으로 조사한 오브젝트의 ID
-  inventory: [],            // TODO(Inventory System): 획득한 아이템 목록
+  inspectCounts: {},        // 오브젝트별 조사 횟수 (예: { bed: 2, desk: 1 })
+  inventory: [],           // TODO(Inventory System): 획득한 아이템 목록
 };
 
 /* ---------- 3. DOM 요소 ---------- */
@@ -108,6 +132,7 @@ function showScreen(screenName) {
 function startGame() {
   gameState.currentRoomId = 'bedroom';
   gameState.selectedObjectId = null;
+  gameState.inspectCounts = {}; // 새 게임이므로 조사 기록 초기화
 
   showScreen('game');
   enterRoom(gameState.currentRoomId);
@@ -166,9 +191,31 @@ function inspectObject(objectId) {
     return;
   }
 
+  // 1) 지금까지 이 오브젝트를 몇 번 조사했는지 가져오기 (처음이면 기록이 없으므로 0)
+  const inspectCount = getInspectCount(objectId);
+
+  // 2) 조사 횟수를 대사 번호로 사용하되, 대사 개수를 넘어가면 마지막 대사에 고정
+  //    예) 대사 3개 → 조사 0,1,2회차는 0,1,2번 대사 / 3회차 이후는 계속 2번 대사
+  const lastIndex = roomObject.descriptions.length - 1;
+  const descriptionIndex = Math.min(inspectCount, lastIndex);
+
+  // 3) 화면에 출력
   gameState.selectedObjectId = objectId;
   highlightSelectedObject(objectId);
-  showDialogue(roomObject.name, roomObject.description);
+  showDialogue(roomObject.name, roomObject.descriptions[descriptionIndex]);
+
+  // 4) 조사 횟수 1 증가 → 다음 클릭 때 다음 대사가 나옴
+  gameState.inspectCounts[objectId] = inspectCount + 1;
+}
+
+/**
+ * 오브젝트를 몇 번 조사했는지 반환합니다.
+ * TODO(Puzzle System): "쪽지를 두 번 이상 읽었다면" 같은 조건을 만들 때 활용할 수 있습니다.
+ * @param {string} objectId
+ * @returns {number}
+ */
+function getInspectCount(objectId) {
+  return gameState.inspectCounts[objectId] ?? 0;
 }
 
 /** 선택한 오브젝트에만 .is-selected 클래스를 붙입니다. */
