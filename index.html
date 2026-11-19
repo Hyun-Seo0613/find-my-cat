@@ -35,6 +35,11 @@
       <path fill="#ffffff" d="M2 1h8v10h-8z" />
       <path fill="#4a3428" d="M3 3h6v1h-6z M3 5h6v1h-6z M3 7h4v1h-4z" />
     </symbol>
+    <symbol id="item-diary" viewBox="0 0 12 12" shape-rendering="crispEdges">
+      <path fill="#c86b7a" d="M2 1h8v10h-8z" />
+      <path fill="#fff6e6" d="M4 3h5v3h-5z" />
+      <path fill="#4a3428" d="M3 1h1v10h-1z M5 4h3v1h-3z" />
+    </symbol>
   </svg>
 
   <div class="app">
@@ -181,6 +186,35 @@
           <ul id="inventory-slots" class="inventory-slots"></ul>
         </section>
       </footer>
+
+      <!-- 비밀번호 자물쇠 창 (main.js 의 openCodeLock / closeCodeLock 이 hidden 을 제어) -->
+      <div id="code-lock" class="code-lock" role="dialog" aria-modal="true" aria-labelledby="code-lock-title" hidden>
+        <div class="code-lock-panel">
+          <h3 id="code-lock-title" class="code-lock-title">비밀번호 자물쇠</h3>
+          <div class="code-lock-display" aria-live="polite">
+            <span class="code-digit"></span>
+            <span class="code-digit"></span>
+            <span class="code-digit"></span>
+            <span class="code-digit"></span>
+          </div>
+          <p id="code-lock-message" class="code-lock-message">숫자 4자리를 입력하세요.</p>
+          <div id="code-lock-keys" class="code-lock-keys">
+            <button class="code-key" type="button" data-key="1">1</button>
+            <button class="code-key" type="button" data-key="2">2</button>
+            <button class="code-key" type="button" data-key="3">3</button>
+            <button class="code-key" type="button" data-key="4">4</button>
+            <button class="code-key" type="button" data-key="5">5</button>
+            <button class="code-key" type="button" data-key="6">6</button>
+            <button class="code-key" type="button" data-key="7">7</button>
+            <button class="code-key" type="button" data-key="8">8</button>
+            <button class="code-key" type="button" data-key="9">9</button>
+            <button class="code-key is-sub" type="button" data-key="delete" aria-label="지우기">←</button>
+            <button class="code-key" type="button" data-key="0">0</button>
+            <button class="code-key is-enter" type="button" data-key="enter">확인</button>
+          </div>
+          <button id="code-lock-close" class="pixel-button is-small" type="button">닫기</button>
+        </div>
+      </div>
     </section>
 
   </div>

@@ -7,9 +7,10 @@
    3. DOM 요소      : 자주 사용하는 HTML 요소를 미리 찾아 둠
    4. 화면 전환     : 메인 화면 <-> 게임 화면
    5. 방 & 대화창   : 오브젝트 조사, 대화창 출력
-   6. 인벤토리 UI   : 빈 슬롯 그리기 (기능은 추후 구현)
-   7. 이벤트 연결   : addEventListener 로 클릭 이벤트 등록
-   8. 초기화
+   6. 인벤토리      : 아이템 획득·선택·사용·삭제
+   7. 퍼즐          : 비밀번호 자물쇠
+   8. 이벤트 연결   : addEventListener 로 클릭 이벤트 등록
+   9. 초기화
    ========================================================== */
 
 /* ---------- 1. 게임 데이터 ---------- */
@@ -41,9 +42,26 @@ const ROOMS = {
         item: 'note', // 처음 조사할 때 얻는 아이템 (ITEMS 의 key)
         descriptions: [
           '스탠드 불이 켜져 있다. 어젯밤에 분명 끄고 잤는데...\n책상 위에 처음 보는 쪽지 한 장이 놓여 있어서 챙겼다.',
-          '쪽지를 자세히 보니 무언가 적혀 있다.\n"고양이들이 가장 좋아하는 곳을 봐." ...누가 쓴 걸까?',
-          '쪽지의 글씨체가 어딘가 낯이 익다.',
+          '책상 서랍은 잠겨 있다.\n열쇠 구멍 옆에 작은 고양이 무늬가 새겨져 있다.',
+          '고양이 무늬 열쇠 구멍... 맞는 열쇠가 있으면 열 수 있을 것 같다.',
         ],
+        // itemUses : 이 오브젝트에 사용할 수 있는 아이템 (key = ITEMS 의 key)
+        //   flag        : 사용에 성공하면 켜지는 플래그 (gameState.flags)
+        //   consumeItem : true 면 사용한 아이템이 인벤토리에서 사라짐
+        //   rewardItem  : 사용 결과로 얻는 아이템 (생략 가능)
+        itemUses: {
+          key: {
+            flag: 'deskDrawerOpened',
+            consumeItem: true,
+            rewardItem: 'diary',
+            text: '고양이 무늬 열쇠를 꽂고 돌리자 "딸깍" 하고 서랍이 열렸다.\n안에 낡은 일기장이 들어 있다.',
+          },
+        },
+        // afterFlag : 해당 플래그가 켜진 뒤에는 descriptions 대신 이 대사를 보여줌
+        afterFlag: {
+          flag: 'deskDrawerOpened',
+          text: '열린 책상 서랍. 이제 안에는 아무것도 없다.',
+        },
       },
       drawer: {
         name: '서랍',
@@ -57,7 +75,7 @@ const ROOMS = {
         name: '액자',
         descriptions: [
           '보리, 콩이와 함께 찍은 사진이다.\n액자가 비스듬히 기울어져 있다. 누가 건드린 걸까?',
-          '사진 아래 구석에 작은 글씨로 날짜가 적혀 있다.\n고양이들을 처음 데려온 날이다.',
+          '사진 아래 구석에 작은 글씨가 적혀 있다.\n"3월 14일, 보리 & 콩이 우리 집에 온 날"',
         ],
       },
       plant: {
@@ -73,6 +91,17 @@ const ROOMS = {
           '문이 잠겨 있다. 안쪽에서 잠근 기억은 없는데...\n손잡이 아래에 숫자 4자리를 입력하는 자물쇠가 달려 있다.',
           '문고리를 흔들어 보았지만 꿈쩍도 하지 않는다.\n비밀번호를 알아내야 할 것 같다.',
         ],
+        // puzzle : 조사하면 비밀번호 입력창이 열림
+        puzzle: {
+          answer: '0314',
+          flag: 'doorUnlocked',
+          successText: '철컥! 자물쇠가 풀렸다.\n문틈 너머로 작게 방울 소리가 들린다... 보리 목걸이 소리다!',
+          failText: '삑- 비밀번호가 틀렸다.',
+        },
+        afterFlag: {
+          flag: 'doorUnlocked',
+          text: '문이 열려 있다. 복도 쪽에서 방울 소리가 들린다.\n(다음 방은 준비 중입니다)',
+        },
       },
     },
   },
@@ -91,6 +120,11 @@ const ITEMS = {
     description: '"고양이들이 가장 좋아하는 곳을 봐." 라고 적혀 있다.',
     icon: 'item-note',
   },
+  diary: {
+    name: '낡은 일기장',
+    description: '"방문 비밀번호를 바꿨다. 보리랑 콩이가 우리 집에 온 날로. 잊지 말 것!"',
+    icon: 'item-diary',
+  },
 };
 
 // 인벤토리 슬롯 개수 (UI 용)
@@ -104,7 +138,12 @@ const gameState = {
   currentRoomId: 'bedroom', // 현재 있는 방의 ID
   selectedObjectId: null,   // 마지막으로 조사한 오브젝트의 ID
   inspectCounts: {},        // 오브젝트별 조사 횟수 (예: { bed: 2, desk: 1 })
-  inventory: [],            // 획득한 아이템 ID 목록 (예: ['note', 'key'])
+  inventory: [],            // 지금 가지고 있는 아이템 ID 목록 (예: ['note', 'key'])
+  obtainedItems: [],        // 한 번이라도 얻은 아이템 (사용해서 사라져도 다시 줍지 않도록)
+  selectedItemId: null,     // 인벤토리에서 선택한 아이템 (사용 대기 중)
+  flags: {},                // 진행 플래그 (예: { deskDrawerOpened: true })
+  activePuzzleObjectId: null, // 비밀번호 창이 열려 있는 오브젝트 ID
+  codeInput: '',            // 비밀번호 창에 입력 중인 숫자
 };
 
 /* ---------- 3. DOM 요소 ---------- */
@@ -121,6 +160,13 @@ const dialogueSpeaker = document.querySelector('#dialogue-speaker');
 const dialogueText = document.querySelector('#dialogue-text');
 
 const inventorySlotList = document.querySelector('#inventory-slots');
+
+const codeLock = document.querySelector('#code-lock');
+const codeLockPanel = codeLock.querySelector('.code-lock-panel');
+const codeLockDigits = codeLock.querySelectorAll('.code-digit');
+const codeLockMessage = document.querySelector('#code-lock-message');
+const codeLockKeys = document.querySelector('#code-lock-keys');
+const codeLockCloseButton = document.querySelector('#code-lock-close');
 
 // 화면 이름과 실제 요소를 연결해 두면 showScreen('game') 처럼 이름으로 전환할 수 있습니다.
 const screens = {
@@ -150,7 +196,12 @@ function startGame() {
   gameState.selectedObjectId = null;
   gameState.inspectCounts = {}; // 새 게임이므로 조사 기록 초기화
   gameState.inventory = [];     // 인벤토리도 비우기
+  gameState.obtainedItems = [];
+  gameState.selectedItemId = null;
+  gameState.flags = {};
+  closeCodeLock();
   renderInventory();
+  renderObjectStates();
 
   showScreen('game');
   enterRoom(gameState.currentRoomId);
@@ -158,6 +209,7 @@ function startGame() {
 
 /** 메뉴 버튼: 메인 화면으로 돌아갑니다. */
 function returnToTitle() {
+  closeCodeLock();
   clearSelectedObject();
   showScreen('title');
 }
@@ -196,7 +248,7 @@ function showDialogue(speaker, text) {
 
 /**
  * 오브젝트를 조사합니다. (클릭 시 호출)
- * TODO(Interaction / Puzzle System): 아이템 획득, 잠금 확인 등은 이 함수에서 분기하면 됩니다.
+ * 인벤토리에서 아이템을 선택한 상태라면 조사 대신 아이템을 사용합니다.
  * @param {string} objectId - data-object-id 값
  */
 function inspectObject(objectId) {
@@ -209,28 +261,47 @@ function inspectObject(objectId) {
     return;
   }
 
+  gameState.selectedObjectId = objectId;
+  highlightSelectedObject(objectId);
+
+  // 0) 아이템을 들고 있다면 → 아이템 사용
+  if (gameState.selectedItemId) {
+    useItemOnObject(gameState.selectedItemId, objectId);
+    return;
+  }
+
   // 1) 지금까지 이 오브젝트를 몇 번 조사했는지 가져오기 (처음이면 기록이 없으므로 0)
   const inspectCount = getInspectCount(objectId);
 
-  // 2) 조사 횟수를 대사 번호로 사용하되, 대사 개수를 넘어가면 마지막 대사에 고정
+  // 2) 이미 해결한 오브젝트(플래그가 켜짐)라면 afterFlag 대사,
+  //    아니면 조사 횟수를 대사 번호로 사용하되, 대사 개수를 넘어가면 마지막 대사에 고정
   //    예) 대사 3개 → 조사 0,1,2회차는 0,1,2번 대사 / 3회차 이후는 계속 2번 대사
-  const lastIndex = roomObject.descriptions.length - 1;
-  const descriptionIndex = Math.min(inspectCount, lastIndex);
+  const isSolved = roomObject.afterFlag && hasFlag(roomObject.afterFlag.flag);
+  let dialogue;
 
-  let dialogue = roomObject.descriptions[descriptionIndex];
+  if (isSolved) {
+    dialogue = roomObject.afterFlag.text;
+  } else {
+    const lastIndex = roomObject.descriptions.length - 1;
+    const descriptionIndex = Math.min(inspectCount, lastIndex);
+    dialogue = roomObject.descriptions[descriptionIndex];
+  }
 
-  // 3) 아이템이 있는 오브젝트라면 획득 시도 (이미 가지고 있으면 addItem 이 false 를 반환)
-  if (roomObject.item && addItem(roomObject.item)) {
+  // 3) 아이템이 있는 오브젝트라면 획득 시도 (한 번 얻은 아이템은 다시 얻지 않음)
+  if (roomObject.item && !hasObtainedItem(roomObject.item) && addItem(roomObject.item)) {
     dialogue += `\n▶ [${ITEMS[roomObject.item].name}] 을(를) 획득했다!`;
   }
 
   // 4) 화면에 출력
-  gameState.selectedObjectId = objectId;
-  highlightSelectedObject(objectId);
   showDialogue(roomObject.name, dialogue);
 
   // 5) 조사 횟수 1 증가 → 다음 클릭 때 다음 대사가 나옴
   gameState.inspectCounts[objectId] = inspectCount + 1;
+
+  // 6) 아직 풀지 않은 퍼즐이 달린 오브젝트면 비밀번호 창 열기
+  if (roomObject.puzzle && !isSolved) {
+    openCodeLock(objectId);
+  }
 }
 
 /**
@@ -259,6 +330,31 @@ function clearSelectedObject() {
   highlightSelectedObject(null);
 }
 
+/** 플래그가 켜져 있는지 확인합니다. */
+function hasFlag(flagName) {
+  return gameState.flags[flagName] === true;
+}
+
+/** 플래그를 켜고, 오브젝트 겉모습을 갱신합니다. */
+function setFlag(flagName) {
+  gameState.flags[flagName] = true;
+  renderObjectStates();
+}
+
+/**
+ * afterFlag 가 켜진(= 해결된) 오브젝트에 .is-solved 클래스를 붙입니다.
+ * CSS 에서 이 클래스로 "열린 문", "풀린 자물쇠" 같은 모습을 표현합니다.
+ */
+function renderObjectStates() {
+  const room = ROOMS[gameState.currentRoomId];
+
+  roomScene.querySelectorAll('.room-object').forEach((objectElement) => {
+    const roomObject = room.objects[objectElement.dataset.objectId];
+    const isSolved = Boolean(roomObject?.afterFlag && hasFlag(roomObject.afterFlag.flag));
+    objectElement.classList.toggle('is-solved', isSolved);
+  });
+}
+
 /**
  * 오브젝트 클릭 이벤트 핸들러
  * event.currentTarget 은 "이벤트를 등록한 요소" (= 클릭된 .room-object 버튼) 입니다.
@@ -282,6 +378,11 @@ function hasItem(itemId) {
   return gameState.inventory.includes(itemId);
 }
 
+/** 한 번이라도 얻은 적이 있는 아이템인지 확인합니다. */
+function hasObtainedItem(itemId) {
+  return gameState.obtainedItems.includes(itemId);
+}
+
 /**
  * 인벤토리에 아이템을 추가합니다.
  * @param {string} itemId - ITEMS 의 key
@@ -299,17 +400,81 @@ function addItem(itemId) {
   }
 
   gameState.inventory.push(itemId);
+  gameState.obtainedItems.push(itemId);
   renderInventory(itemId);
   return true;
 }
 
 /**
- * 인벤토리에서 아이템을 제거합니다. (3단계: 아이템 사용 시 활용)
+ * 인벤토리에서 아이템을 제거합니다.
  * @param {string} itemId
  */
 function removeItem(itemId) {
   gameState.inventory = gameState.inventory.filter((ownedItemId) => ownedItemId !== itemId);
+
+  if (gameState.selectedItemId === itemId) {
+    gameState.selectedItemId = null;
+  }
+
   renderInventory();
+}
+
+/**
+ * 아이템을 선택합니다. 같은 아이템을 다시 누르면 선택이 해제됩니다.
+ * @param {string} itemId
+ */
+function selectItem(itemId) {
+  const item = ITEMS[itemId];
+
+  if (gameState.selectedItemId === itemId) {
+    clearSelectedItem();
+    showDialogue(item.name, `${item.description}\n(선택 해제)`);
+    return;
+  }
+
+  gameState.selectedItemId = itemId;
+  renderInventory();
+  showDialogue(item.name, `${item.description}\n▶ 사용할 곳을 클릭해 보자.`);
+}
+
+/** 아이템 선택을 해제합니다. */
+function clearSelectedItem() {
+  gameState.selectedItemId = null;
+  renderInventory();
+}
+
+/**
+ * 선택한 아이템을 오브젝트에 사용합니다.
+ * 사용 규칙은 ROOMS 데이터의 itemUses 에 적어 둡니다.
+ * @param {string} itemId
+ * @param {string} objectId
+ */
+function useItemOnObject(itemId, objectId) {
+  const roomObject = ROOMS[gameState.currentRoomId].objects[objectId];
+  const item = ITEMS[itemId];
+  const itemUse = roomObject.itemUses?.[itemId];
+
+  // 사용 시도가 끝나면 성공·실패와 상관없이 선택 해제
+  clearSelectedItem();
+
+  // 쓸 수 없는 조합이거나 이미 사용한 경우
+  if (!itemUse || hasFlag(itemUse.flag)) {
+    showDialogue('나', `[${item.name}] 은(는) ${roomObject.name}에 쓸 수 없을 것 같다.`);
+    return;
+  }
+
+  let dialogue = itemUse.text;
+
+  if (itemUse.consumeItem) {
+    removeItem(itemId);
+  }
+
+  if (itemUse.rewardItem && addItem(itemUse.rewardItem)) {
+    dialogue += `\n▶ [${ITEMS[itemUse.rewardItem].name}] 을(를) 획득했다!`;
+  }
+
+  setFlag(itemUse.flag);
+  showDialogue(roomObject.name, dialogue);
 }
 
 /**
@@ -318,6 +483,9 @@ function removeItem(itemId) {
  */
 function renderInventory(newItemId) {
   inventorySlotList.innerHTML = '';
+
+  // 아이템을 들고 있는 동안 방 안의 커서 모양을 바꾸기 위한 클래스
+  roomScene.classList.toggle('is-using-item', Boolean(gameState.selectedItemId));
 
   for (let slotIndex = 0; slotIndex < INVENTORY_SLOT_COUNT; slotIndex += 1) {
     const slotElement = document.createElement('li');
@@ -336,6 +504,10 @@ function renderInventory(newItemId) {
 
       if (itemId === newItemId) {
         slotElement.classList.add('is-new');
+      }
+
+      if (itemId === gameState.selectedItemId) {
+        slotElement.classList.add('is-selected');
       }
     } else {
       slotElement.setAttribute('aria-label', `빈 슬롯 ${slotIndex + 1}`);
@@ -358,16 +530,133 @@ function handleInventoryClick(event) {
     return;
   }
 
-  const item = ITEMS[slotElement.dataset.itemId];
-  showDialogue(item.name, item.description);
-  // TODO(3단계): 여기서 아이템을 "선택" 상태로 만들고, 오브젝트에 사용하는 기능으로 확장
+  selectItem(slotElement.dataset.itemId);
 }
 
-/* ---------- 7. 이벤트 연결 ---------- */
+/* ---------- 7. 퍼즐: 비밀번호 자물쇠 ---------- */
+// 입력 중인 숫자는 gameState.codeInput 에 저장하고, renderCodeLock() 으로 화면에 반영합니다.
+
+/**
+ * 비밀번호 입력창을 엽니다.
+ * @param {string} objectId - puzzle 데이터가 있는 오브젝트 ID
+ */
+function openCodeLock(objectId) {
+  gameState.activePuzzleObjectId = objectId;
+  gameState.codeInput = '';
+  codeLockMessage.textContent = '숫자 4자리를 입력하세요.';
+  renderCodeLock();
+  codeLock.hidden = false;
+}
+
+/** 비밀번호 입력창을 닫습니다. */
+function closeCodeLock() {
+  gameState.activePuzzleObjectId = null;
+  gameState.codeInput = '';
+  codeLock.hidden = true;
+}
+
+/** 입력창이 열려 있는지 확인합니다. */
+function isCodeLockOpen() {
+  return gameState.activePuzzleObjectId !== null;
+}
+
+/** 현재 입력값을 4칸 표시창에 그립니다. */
+function renderCodeLock() {
+  codeLockDigits.forEach((digitElement, index) => {
+    digitElement.textContent = gameState.codeInput[index] ?? '';
+    digitElement.classList.toggle('is-filled', index < gameState.codeInput.length);
+  });
+}
+
+/**
+ * 키패드 입력을 처리합니다.
+ * @param {string} key - '0'~'9', 'delete', 'enter'
+ */
+function pressCodeKey(key) {
+  const { answer } = getActivePuzzle();
+
+  if (key === 'delete') {
+    gameState.codeInput = gameState.codeInput.slice(0, -1);
+  } else if (key === 'enter') {
+    submitCode();
+    return;
+  } else if (gameState.codeInput.length < answer.length) {
+    gameState.codeInput += key;
+  }
+
+  renderCodeLock();
+}
+
+/** 지금 열려 있는 퍼즐 데이터를 가져옵니다. */
+function getActivePuzzle() {
+  const room = ROOMS[gameState.currentRoomId];
+  return room.objects[gameState.activePuzzleObjectId].puzzle;
+}
+
+/** 입력한 비밀번호가 맞는지 판정합니다. */
+function submitCode() {
+  const objectId = gameState.activePuzzleObjectId;
+  const roomObject = ROOMS[gameState.currentRoomId].objects[objectId];
+  const puzzle = roomObject.puzzle;
+
+  if (gameState.codeInput.length < puzzle.answer.length) {
+    codeLockMessage.textContent = `숫자 ${puzzle.answer.length}자리를 모두 입력하세요.`;
+    return;
+  }
+
+  // 정답
+  if (gameState.codeInput === puzzle.answer) {
+    closeCodeLock();
+    setFlag(puzzle.flag);
+    showDialogue(roomObject.name, puzzle.successText);
+    return;
+  }
+
+  // 오답: 패널을 흔들고 입력 초기화
+  codeLockMessage.textContent = puzzle.failText;
+  gameState.codeInput = '';
+  renderCodeLock();
+
+  codeLockPanel.classList.remove('is-wrong');
+  void codeLockPanel.offsetWidth; // 애니메이션을 처음부터 다시 재생하기 위한 트릭 (reflow)
+  codeLockPanel.classList.add('is-wrong');
+}
+
+/** 키패드 버튼 클릭 (이벤트 위임) */
+function handleCodeKeyClick(event) {
+  const keyButton = event.target.closest('[data-key]');
+
+  if (keyButton) {
+    pressCodeKey(keyButton.dataset.key);
+  }
+}
+
+/** 키보드로도 입력할 수 있게 합니다. (숫자, Backspace, Enter, Esc) */
+function handleKeydown(event) {
+  if (!isCodeLockOpen()) {
+    return;
+  }
+
+  if (/^[0-9]$/.test(event.key)) {
+    pressCodeKey(event.key);
+  } else if (event.key === 'Backspace') {
+    pressCodeKey('delete');
+  } else if (event.key === 'Enter') {
+    event.preventDefault(); // 포커스된 버튼이 한 번 더 눌리는 것 방지
+    pressCodeKey('enter');
+  } else if (event.key === 'Escape') {
+    closeCodeLock();
+  }
+}
+
+/* ---------- 8. 이벤트 연결 ---------- */
 function bindEvents() {
   startButton.addEventListener('click', startGame);
   menuButton.addEventListener('click', returnToTitle);
   inventorySlotList.addEventListener('click', handleInventoryClick);
+  codeLockKeys.addEventListener('click', handleCodeKeyClick);
+  codeLockCloseButton.addEventListener('click', closeCodeLock);
+  document.addEventListener('keydown', handleKeydown);
 
   // 방 안의 모든 오브젝트에 같은 클릭 핸들러를 등록
   const roomObjects = roomScene.querySelectorAll('.room-object');
@@ -376,7 +665,7 @@ function bindEvents() {
   });
 }
 
-/* ---------- 8. 초기화 ---------- */
+/* ---------- 9. 초기화 ---------- */
 function init() {
   renderInventory();
   bindEvents();
