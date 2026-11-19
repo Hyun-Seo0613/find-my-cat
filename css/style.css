@@ -885,10 +885,40 @@ button {
 }
 
 .inventory-slot {
+  display: grid;
+  place-items: center;
   aspect-ratio: 1;
   background: #f1e1c8;
   border: var(--px) solid var(--ink);
   box-shadow: inset 3px 3px 0 #d6c1a3, inset -3px -3px 0 #fff7ea;
+}
+
+/* 아이템이 들어 있는 슬롯 */
+.inventory-slot.has-item {
+  background: var(--paper);
+  cursor: help;
+}
+
+.item-icon {
+  width: 72%;
+  height: 72%;
+  /* 4방향 그림자로 픽셀 외곽선 효과 */
+  filter:
+    drop-shadow(2px 0 0 var(--ink))
+    drop-shadow(-2px 0 0 var(--ink))
+    drop-shadow(0 2px 0 var(--ink))
+    drop-shadow(0 -2px 0 var(--ink));
+}
+
+/* 방금 얻은 아이템 강조 */
+.inventory-slot.is-new {
+  animation: slot-pop 0.6s steps(3);
+}
+
+@keyframes slot-pop {
+  0%   { transform: scale(1);    background: var(--butter); }
+  50%  { transform: scale(1.18); background: var(--butter); }
+  100% { transform: scale(1); }
 }
 
 /* ---------- 9. 반응형 ---------- */

@@ -38,18 +38,19 @@ const ROOMS = {
       },
       desk: {
         name: '책상',
+        item: 'note', // 처음 조사할 때 얻는 아이템 (ITEMS 의 key)
         descriptions: [
-          '스탠드 불이 켜져 있다. 어젯밤에 분명 끄고 잤는데...\n책상 위에 처음 보는 쪽지 한 장이 놓여 있다.',
+          '스탠드 불이 켜져 있다. 어젯밤에 분명 끄고 잤는데...\n책상 위에 처음 보는 쪽지 한 장이 놓여 있어서 챙겼다.',
           '쪽지를 자세히 보니 무언가 적혀 있다.\n"고양이들이 가장 좋아하는 곳을 봐." ...누가 쓴 걸까?',
           '쪽지의 글씨체가 어딘가 낯이 익다.',
         ],
       },
       drawer: {
         name: '서랍',
+        item: 'key',
         descriptions: [
-          '3단 서랍장이다. 맨 아래 칸이 살짝 열려 있다.\n틈 사이로 무언가 반짝이는 것이 보인다.',
-          '서랍을 당겨 보았지만 무언가에 걸려서 더 이상 열리지 않는다.',
-          '안쪽의 반짝이는 물건이 신경 쓰인다.',
+          '3단 서랍장이다. 맨 아래 칸이 살짝 열려 있다.\n안쪽을 더듬어 보니 차가운 금속이 손끝에 닿았다.',
+          '서랍 안에는 이제 아무것도 없다.',
         ],
       },
       frame: {
@@ -77,6 +78,21 @@ const ROOMS = {
   },
 };
 
+// 아이템 데이터
+// icon : index.html 의 <symbol id="..."> 값. 나중에 PNG 를 쓰려면 이미지 경로로 바꾸고 renderInventory 만 고치면 됩니다.
+const ITEMS = {
+  key: {
+    name: '작은 열쇠',
+    description: '서랍 안쪽에서 찾은 작은 열쇠. 손잡이에 고양이 모양이 새겨져 있다.',
+    icon: 'item-key',
+  },
+  note: {
+    name: '수상한 쪽지',
+    description: '"고양이들이 가장 좋아하는 곳을 봐." 라고 적혀 있다.',
+    icon: 'item-note',
+  },
+};
+
 // 인벤토리 슬롯 개수 (UI 용)
 const INVENTORY_SLOT_COUNT = 8;
 
@@ -88,7 +104,7 @@ const gameState = {
   currentRoomId: 'bedroom', // 현재 있는 방의 ID
   selectedObjectId: null,   // 마지막으로 조사한 오브젝트의 ID
   inspectCounts: {},        // 오브젝트별 조사 횟수 (예: { bed: 2, desk: 1 })
-  inventory: [],           // TODO(Inventory System): 획득한 아이템 목록
+  inventory: [],            // 획득한 아이템 ID 목록 (예: ['note', 'key'])
 };
 
 /* ---------- 3. DOM 요소 ---------- */
@@ -133,6 +149,8 @@ function startGame() {
   gameState.currentRoomId = 'bedroom';
   gameState.selectedObjectId = null;
   gameState.inspectCounts = {}; // 새 게임이므로 조사 기록 초기화
+  gameState.inventory = [];     // 인벤토리도 비우기
+  renderInventory();
 
   showScreen('game');
   enterRoom(gameState.currentRoomId);
@@ -199,12 +217,19 @@ function inspectObject(objectId) {
   const lastIndex = roomObject.descriptions.length - 1;
   const descriptionIndex = Math.min(inspectCount, lastIndex);
 
-  // 3) 화면에 출력
+  let dialogue = roomObject.descriptions[descriptionIndex];
+
+  // 3) 아이템이 있는 오브젝트라면 획득 시도 (이미 가지고 있으면 addItem 이 false 를 반환)
+  if (roomObject.item && addItem(roomObject.item)) {
+    dialogue += `\n▶ [${ITEMS[roomObject.item].name}] 을(를) 획득했다!`;
+  }
+
+  // 4) 화면에 출력
   gameState.selectedObjectId = objectId;
   highlightSelectedObject(objectId);
-  showDialogue(roomObject.name, roomObject.descriptions[descriptionIndex]);
+  showDialogue(roomObject.name, dialogue);
 
-  // 4) 조사 횟수 1 증가 → 다음 클릭 때 다음 대사가 나옴
+  // 5) 조사 횟수 1 증가 → 다음 클릭 때 다음 대사가 나옴
   gameState.inspectCounts[objectId] = inspectCount + 1;
 }
 
@@ -244,28 +269,105 @@ function handleObjectClick(event) {
   inspectObject(objectId);
 }
 
-/* ---------- 6. 인벤토리 UI ---------- */
+/* ---------- 6. 인벤토리 ---------- */
+// 원칙: 데이터(gameState.inventory)를 먼저 바꾸고 → renderInventory() 로 화면을 다시 그린다.
+//       화면(DOM)을 직접 고치지 않기 때문에 데이터와 화면이 어긋날 일이 없습니다.
 
 /**
- * 빈 인벤토리 슬롯을 그립니다.
- * TODO(Inventory System): gameState.inventory 의 아이템을 슬롯 안에 그려 넣는 기능을 추가하세요.
+ * 아이템을 가지고 있는지 확인합니다.
+ * @param {string} itemId
+ * @returns {boolean}
  */
-function renderInventorySlots() {
+function hasItem(itemId) {
+  return gameState.inventory.includes(itemId);
+}
+
+/**
+ * 인벤토리에 아이템을 추가합니다.
+ * @param {string} itemId - ITEMS 의 key
+ * @returns {boolean} 새로 추가했으면 true, 추가하지 못했으면 false
+ */
+function addItem(itemId) {
+  if (!ITEMS[itemId]) {
+    console.warn(`[addItem] 존재하지 않는 아이템입니다: ${itemId}`);
+    return false;
+  }
+
+  // 이미 가지고 있거나 슬롯이 가득 찼으면 추가하지 않음
+  if (hasItem(itemId) || gameState.inventory.length >= INVENTORY_SLOT_COUNT) {
+    return false;
+  }
+
+  gameState.inventory.push(itemId);
+  renderInventory(itemId);
+  return true;
+}
+
+/**
+ * 인벤토리에서 아이템을 제거합니다. (3단계: 아이템 사용 시 활용)
+ * @param {string} itemId
+ */
+function removeItem(itemId) {
+  gameState.inventory = gameState.inventory.filter((ownedItemId) => ownedItemId !== itemId);
+  renderInventory();
+}
+
+/**
+ * gameState.inventory 를 기준으로 인벤토리 슬롯 전체를 다시 그립니다.
+ * @param {string} [newItemId] - 방금 얻은 아이템 ID (강조 애니메이션용, 생략 가능)
+ */
+function renderInventory(newItemId) {
   inventorySlotList.innerHTML = '';
 
   for (let slotIndex = 0; slotIndex < INVENTORY_SLOT_COUNT; slotIndex += 1) {
     const slotElement = document.createElement('li');
     slotElement.className = 'inventory-slot';
     slotElement.dataset.slotIndex = slotIndex;
-    slotElement.setAttribute('aria-label', `빈 슬롯 ${slotIndex + 1}`);
+
+    const itemId = gameState.inventory[slotIndex]; // 이 칸에 들어갈 아이템 (없으면 undefined)
+
+    if (itemId) {
+      const item = ITEMS[itemId];
+      slotElement.classList.add('has-item');
+      slotElement.dataset.itemId = itemId;
+      slotElement.title = item.name;
+      slotElement.setAttribute('aria-label', item.name);
+      slotElement.innerHTML = `<svg class="item-icon" aria-hidden="true"><use href="#${item.icon}" /></svg>`;
+
+      if (itemId === newItemId) {
+        slotElement.classList.add('is-new');
+      }
+    } else {
+      slotElement.setAttribute('aria-label', `빈 슬롯 ${slotIndex + 1}`);
+    }
+
     inventorySlotList.appendChild(slotElement);
   }
+}
+
+/**
+ * 인벤토리 클릭 이벤트 핸들러 (이벤트 위임)
+ * 슬롯은 renderInventory 가 매번 새로 만들기 때문에, 슬롯 각각이 아니라
+ * 부모(ul)에 이벤트를 한 번만 등록하고 클릭된 슬롯을 closest() 로 찾습니다.
+ */
+function handleInventoryClick(event) {
+  const slotElement = event.target.closest('.inventory-slot');
+
+  // 빈 칸이나 슬롯 바깥을 클릭했다면 무시
+  if (!slotElement || !slotElement.dataset.itemId) {
+    return;
+  }
+
+  const item = ITEMS[slotElement.dataset.itemId];
+  showDialogue(item.name, item.description);
+  // TODO(3단계): 여기서 아이템을 "선택" 상태로 만들고, 오브젝트에 사용하는 기능으로 확장
 }
 
 /* ---------- 7. 이벤트 연결 ---------- */
 function bindEvents() {
   startButton.addEventListener('click', startGame);
   menuButton.addEventListener('click', returnToTitle);
+  inventorySlotList.addEventListener('click', handleInventoryClick);
 
   // 방 안의 모든 오브젝트에 같은 클릭 핸들러를 등록
   const roomObjects = roomScene.querySelectorAll('.room-object');
@@ -276,7 +378,7 @@ function bindEvents() {
 
 /* ---------- 8. 초기화 ---------- */
 function init() {
-  renderInventorySlots();
+  renderInventory();
   bindEvents();
   showScreen('title');
 }
